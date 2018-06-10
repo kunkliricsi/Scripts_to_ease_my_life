@@ -1,80 +1,86 @@
 #!/usr/bin/python3
 
+import inspect, os
 import pytz
 import sys
-from subprocess import Popen, call, check_output
+from subprocess import Popen, check_output
 from math import pi, cos
 from datetime import timezone, datetime, timedelta
 from astral import Astral
 
+# Gettings scripts directory
+BASEDIR = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
+
 # Checking if adaptive brightness is enabled
-enabled_file = '/usr/local/etc/enable-adaptive-brightness-controller'
+enabled_file = '%s/enable-adaptive-brightness-controller' % BASEDIR
 enabled = int(check_output(['cat', enabled_file]).decode('utf-8'))
 
 if (enabled == 0):
     sys.exit()
 
-# Initializing current location to determine correct date values.
+# Settings up astral to get correct dawn and dusk times.
+#       civil:          6 degrees
+#       nautical:       12 degrees
+#       astronomical:   18 degrees
 a = Astral()
-a.solar_depression = 'civil'
+a.solar_depression = 'astronomical'
 
+# Initializing current location to determine correct date values.
 city_name = 'Budapest'
 city = a[city_name]
 
+# Settings up sun object with initialized values.
 today = datetime.today()
 sun = city.sun(date = today, local = True)
 
-# Getting datetimes of sunset and sunrise +- 15 minutes
-# and initializing now datetime with correct timezone tag.
-# Some adjustments to sunset/sunrise times may be needed.
-sunset = sun['sunset'] - timedelta(minutes = 30)
-sunrise = sun['sunrise'] + timedelta(minutes = 30)
+# Getting datetimes of sunset, sunrise, dusk and dawn with sun object.
+# Initializing now datetime with correct timezone tag.
+sunset = sun['sunset']
+dusk = sun['dusk']
+sunrise = sun['sunrise']
+dawn = sun['dawn']
 now = datetime.now(pytz.timezone(city.timezone))
 
-# Initializing the two midnight points.
-midnight_0 = now.replace(hour = 0, minute = 0, second = 0, microsecond = 0)
-midnight_24 = midnight_0 + timedelta(days = 1)
-
-# Calculating elapsed time between midnight and sunrise/sunset.
-morning = sunrise - midnight_0
-evening = midnight_24 - sunset
-
-# A value between 0 and 1. Calculated by the cosine of now and sunrise or sunset.
-# It will be used to determine the screen brightness value.
-gamma = None
-
-if now <= sunrise:
-    # Calculating the screen brightness with cos(x + pi).
-    elapsed = now - midnight_0
-    gamma = (cos(float(elapsed.seconds/morning.seconds) * pi + pi) + 1) * 0.5
-
-elif now >= sunset:
-    # Calculating the screen brightness with cos(x).
-    elapsed = midnight_24 - now
-    gamma = (cos(float(elapsed.seconds/morning.seconds) * pi + pi) + 1) * 0.5
-
-else:
-    # There is nothing to do, exiting...
-    sys.exit()
-
-# Getting first screen's max brightness.
+# Getting maximum brightness values
+max_gamma = 1
 max_brightness_file = '/sys/class/backlight/intel_backlight/max_brightness'
 max_brightness = int(check_output(['cat', max_brightness_file]).decode('utf-8'))
 
-# Calculating the brightness to send to the first monitor
-brightness = int(max_brightness * gamma)
+# Setting up minimum brightness values.
+min_gamma = 0.3
+min_brightness = 0.09
 
-# Setting minimum brightness values
-gamma += 0.3
-if gamma > 1.0:
-    gamma = 1.0
+# gamma is the value that will get inserted into the xrandr command
+# brightness is the value which will get echod into the /sys/.../brightness
+gamma = None
+brightness = None
+elapsed = 0
+time_between = 0
 
-if brightness < 300:
-    brightness = 300
+if (now > sunrise and now < sunset):
+    gamma = max_gamma
+    brightness = max_brightness
+
+elif (now > dusk or now < dawn):
+    gamma = min_gamma
+    brightness = int(min_brightness * max_brightness)
+
+else:
+
+    if (now <= sunrise):
+        time_between = sunrise - dawn
+        elapsed = now - dawn
+    
+    elif (now >= sunset):
+        time_between = dusk - sunset
+        elapsed = dusk - now
+
+    gamma = elapsed.seconds*(1 - min_gamma) / time_between.seconds + min_gamma
+    brightness = int(max_brightness * (elapsed.seconds*(1 - min_brightness) / time_between.seconds + min_brightness))
 
 # Sending out cat command to set laptop monitor's brightness
 command = ('echo %d > /sys/class/backlight/intel_backlight/brightness' % brightness)
-Popen(['sudo', 'bash', '-c', command])
+Popen(['bash', '-c', command])
 
 # Sending out xrandr command to set monitor's brightness.
 command = ('xrandr --output HDMI-1 --brightness %f' % gamma)

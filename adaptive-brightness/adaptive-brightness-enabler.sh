@@ -1,15 +1,23 @@
 #!/bin/bash
 
-ENABLED="$(cat /usr/local/etc/enable-adaptive-brightness-controller)"
+SCRIPT=$(readlink -f "$0")
+BASEDIR=$(dirname "$SCRIPT")
+
+ENABLED=$(cat "$BASEDIR"/enable-adaptive-brightness-controller)
+
+export DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/1000/bus"
 
 if [ $ENABLED -eq 1 ]
 then
-    echo 0 > /usr/local/etc/enable-adaptive-brightness-controller
+    su -c 'gdbus call --session --dest org.freedesktop.Notifications --object-path /org/freedesktop/Notifications --method org.freedesktop.Notifications.CloseNotification $(cat /tmp/last_id)' ricsi
+    echo 0 > $BASEDIR/enable-adaptive-brightness-controller
     xrandr --output HDMI-1 --brightness 1
     cat /sys/class/backlight/intel_backlight/max_brightness > /sys/class/backlight/intel_backlight/brightness
-    xset -led 2 led off
+    su -c 'gdbus call --session --dest org.freedesktop.Notifications --object-path /org/freedesktop/Notifications --method org.freedesktop.Notifications.Notify Brightness-Indicator 42 weather-clear "Adaptive Brightness: OFF" "" [] {} 20  | sed "s/[^ ]* //; s/,.//" > /tmp/last_id' ricsi
+
 else
-    echo 1 > /usr/local/etc/enable-adaptive-brightness-controller
-    python3 /usr/local/bin/adaptive-brightness/adaptive-brightness-controller.py
-    xset -led 2 led on
+    su -c 'gdbus call --session --dest org.freedesktop.Notifications --object-path /org/freedesktop/Notifications --method org.freedesktop.Notifications.CloseNotification $(cat /tmp/last_id)' ricsi
+    echo 1 > $BASEDIR/enable-adaptive-brightness-controller
+    python3 $BASEDIR/adaptive-brightness-controller.py
+    su -c 'gdbus call --session --dest org.freedesktop.Notifications --object-path /org/freedesktop/Notifications --method org.freedesktop.Notifications.Notify Brightness-Indicator 42 weather-clear-night "Adaptive Brightness: ON" "" [] {} 20  | sed "s/[^ ]* //; s/,.//" > /tmp/last_id' ricsi
 fi
