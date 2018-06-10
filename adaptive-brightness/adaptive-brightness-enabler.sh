@@ -1,11 +1,11 @@
 #!/bin/bash
 
+export DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/1000/bus"
+
 SCRIPT=$(readlink -f "$0")
 BASEDIR=$(dirname "$SCRIPT")
 
 ENABLED=$(cat "$BASEDIR"/enable-adaptive-brightness-controller)
-
-export DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/1000/bus"
 
 if [ $ENABLED -eq 1 ]
 then
