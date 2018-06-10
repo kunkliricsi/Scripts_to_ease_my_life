@@ -9,7 +9,7 @@ from datetime import timezone, datetime, timedelta
 from astral import Astral
 
 # Gettings scripts directory
-BASEDIR = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
+BASEDIR = os.path.dirname(os.path.realpath(sys.argv[0]))
 
 # Checking if adaptive brightness is enabled
 enabled_file = '%s/enable-adaptive-brightness-controller' % BASEDIR
@@ -54,8 +54,6 @@ min_brightness = 0.09
 # brightness is the value which will get echod into the /sys/.../brightness
 gamma = None
 brightness = None
-elapsed = 0
-time_between = 0
 
 if (now > sunrise and now < sunset):
     gamma = max_gamma
